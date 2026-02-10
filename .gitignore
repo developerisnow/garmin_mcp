@@ -9,14 +9,31 @@ dist/
 build/
 *.egg
 
-# Virtual environments
+# Virtual environments / secrets
 .env
 .venv/
+venv/
+
+# Node
+node_modules/
+
+# Exports / backups (large)
+garmin_exports/
+*.sql
+*.sql.gz
+*.db
+*.tar.gz
+
+# Logs / OS noise
 *.log
 .DS_Store
+._*
+
+# Local tooling
 .claude.md
 .mcp.json
+
+# Repo-specific ignored paths
 docs/*
-.gitignore
 playground/*
 tests/fixtures/captured/*

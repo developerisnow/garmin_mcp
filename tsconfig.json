@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16", 
+    "moduleResolution": "Node16",
+    "outDir": "./build",
+    "rootDir": "./",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["scripts/import_extracted_data.ts", "scripts/otel.ts"],
+  "exclude": ["node_modules", "build"]
+}
