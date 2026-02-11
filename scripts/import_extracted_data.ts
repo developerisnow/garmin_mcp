@@ -130,12 +130,20 @@ export class GarminDataImporter {
     return result.rows[0].id;
   }
 
-  async updateBackupRecord(id: number, recordsCount: number, status: string): Promise<void> {
+  async updateBackupRecord(
+    id: number,
+    recordsCount: number,
+    status: string,
+    errorMessage?: string
+  ): Promise<void> {
     await this.pgClient.query(`
       UPDATE backup_metadata 
-      SET records_count = $1, status = $2, completed_at = CURRENT_TIMESTAMP
-      WHERE id = $3
-    `, [recordsCount, status, id]);
+      SET records_count = $1,
+          status = $2,
+          error_message = $3,
+          completed_at = CURRENT_TIMESTAMP
+      WHERE id = $4
+    `, [recordsCount, status, errorMessage ?? null, id]);
   }
 
   async importUserProfile(userData: any): Promise<void> {
@@ -472,6 +480,11 @@ export class GarminDataImporter {
   }
 
   async run(): Promise<void> {
+    let backupId: number | null = null;
+    let totalRecords = 0;
+    let lastKnownStartDate: string | null = null;
+    let lastKnownEndDate: string | null = null;
+
     try {
       await this.connect();
       
@@ -496,6 +509,23 @@ export class GarminDataImporter {
         return;
       }
 
+      // Derive run date range from export metadata (deterministic DB-side run history)
+      for (const file of exportFiles) {
+        const filePath = path.join(this.exportsDir, file);
+        const parsed: GarminExportData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+        const start = parsed?.metadata?.start_date;
+        const end = parsed?.metadata?.end_date;
+        if (!start || !end) continue;
+
+        if (!lastKnownStartDate || start < lastKnownStartDate) lastKnownStartDate = start;
+        if (!lastKnownEndDate || end > lastKnownEndDate) lastKnownEndDate = end;
+      }
+
+      if (lastKnownStartDate && lastKnownEndDate) {
+        backupId = await this.createBackupRecord(lastKnownStartDate, lastKnownEndDate);
+      }
+
       // Process each export file
       for (const file of exportFiles) {
         await this.processExportFile(file);
@@ -518,14 +548,24 @@ export class GarminDataImporter {
       // Verify the import
       await this.verifyImport();
       
-      const totalRecords = Object.values(this.stats).reduce((sum, count) => sum + count, 0);
+      totalRecords = Object.values(this.stats).reduce((sum, count) => sum + count, 0);
       
       console.log('\n✅ Import completed successfully!');
       console.log('📊 Summary:', this.stats);
       console.log(`📈 Total records: ${totalRecords}`);
+
+      if (backupId !== null) {
+        await this.updateBackupRecord(backupId, totalRecords, 'completed');
+      }
       
     } catch (error: any) {
       console.error('❌ Import failed:', error);
+
+      totalRecords = Object.values(this.stats).reduce((sum, count) => sum + count, 0);
+      if (backupId !== null) {
+        await this.updateBackupRecord(backupId, totalRecords, 'failed', String(error));
+      }
+
       throw error;
     } finally {
       await this.disconnect();
